@@ -8,8 +8,9 @@ import (
 )
 
 type Config struct {
-	ManifestURL string `json:"manifest_url"`
-	OutputDir   string `json:"output_dir"`
+	ManifestURL   string `json:"manifest_url"`
+	OutputDir     string `json:"output_dir"`
+	IgnoreFolders string `json:"ignore_folders"`
 }
 
 var configFilePath = "config.json"

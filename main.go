@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"strings"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -28,10 +29,15 @@ const (
 func main() {
 	myApp := app.New()
 	myWindow := myApp.NewWindow(fmt.Sprintf("Minecraft ModPack Manifest Downloader %s", VERSION))
-	backgroundImage := canvas.NewImageFromFile("assets/background.jpg") // Replace "background.jpg" with your image file path
+	backgroundImage := canvas.NewImageFromFile("./assets/background.jpg") // Replace "background.jpg" with your image file path
 	backgroundImage.FillMode = canvas.ImageFillStretch
 	backgroundContainer := container.NewStack(backgroundImage)
+	cfg, _ := config.LoadConfig()
+	progressBar := widget.NewProgressBarInfinite()
+	progressBar.Hide()
 	//// INPUT FIELDS
+	ignoreFolders := widget.NewEntry()
+	ignoreFolders.SetPlaceHolder("Ignore directories that doesnt need be verified. Separe dirs using ','")
 	manifestURLEntry := widget.NewEntry()
 	manifestURLEntry.SetPlaceHolder("Enter Manifest URL")
 	outputDirLabel := widget.NewLabel("Output Directory: Not Selected")
@@ -44,8 +50,9 @@ func main() {
 	})
 	saveConfigButton := widget.NewButtonWithIcon("Save Config", theme.DocumentSaveIcon(), func() {
 		cfg := &config.Config{
-			ManifestURL: manifestURLEntry.Text,
-			OutputDir:   outputDirLabel.Text,
+			ManifestURL:   manifestURLEntry.Text,
+			OutputDir:     outputDirLabel.Text,
+			IgnoreFolders: ignoreFolders.Text,
 		}
 		err := cfg.SaveConfig()
 		if err != nil {
@@ -54,76 +61,35 @@ func main() {
 			dialog.ShowInformation("Config Saved", "Configuration saved successfully!", myWindow)
 		}
 	})
-	progressBar := widget.NewProgressBarInfinite()
-	progressBar.Hide()
-	var downloadButton *widget.Button
-	downloadButton = widget.NewButton("Sync modpack files", func() {
+
+	downloadButton := widget.NewButton("Sync modpack files", func() {
 		manifestURL := manifestURLEntry.Text
-		if manifestURL == "" {
-			dialog.ShowError(errors.New("Please enter a valid manifest URL"), myWindow)
-			return
-		}
 		outputDir := outputDirLabel.Text
-		if outputDir == "Output Directory: Not Selected" {
-			dialog.ShowError(errors.New("Please choose an output directory"), myWindow)
-			return
-		}
-		files, err := operations.DownloadManifestFiles(manifestURL)
-		if err != nil {
-			dialog.ShowError(err, myWindow)
-			return
-		}
-		var wg sync.WaitGroup
-		totalFiles := len(files)
-		wg.Add(totalFiles)
-		go func() {
-			myWindow.SetContent(container.NewVBox(
-				manifestURLEntry,
-				outputDirLabel,
-				outputDirButton,
-				progressBar,
-				downloadButton,
-			))
-
-			progressBar.Show()
-
-			for _, file := range files {
-				go func(file operations.File) {
-					defer wg.Done()
-
-					err := operations.DownloadFile(file, outputDir)
-					if err != nil {
-						dialog.ShowError(err, myWindow)
-						return
-					}
-				}(file)
-			}
-			wg.Wait()
-			err := operations.CleanupOutputDir(files, outputDir)
-			if err != nil {
-				dialog.ShowError(err, myWindow)
-				return
-			}
+		ignoreFolders := strings.Split(ignoreFolders.Text, ",")
+		progressBar.Show()
+		err := startSync(manifestURL, outputDir, ignoreFolders, func() {
 			progressBar.Hide()
 			dialog.ShowInformation("Success", "Files downloaded successfully!", myWindow)
-			myWindow.SetContent(container.NewVBox(
-				manifestURLEntry,
-				outputDirLabel,
-				outputDirButton,
-				downloadButton,
-			))
-		}()
+		})
+		if err != nil {
+			progressBar.Hide()
+			dialog.ShowError(err, myWindow)
+		}
+
 	})
-	///auto updater
-	checkUpdate(myWindow)
-	cfg, _ := config.LoadConfig()
+	///set loaded config to fields
 	manifestURLEntry.SetText(cfg.ManifestURL)
 	outputDirLabel.SetText(cfg.OutputDir)
+	ignoreFolders.SetText(cfg.IgnoreFolders)
+	///auto updater
+	checkUpdate(myWindow)
 
 	content := container.NewVBox(
 		manifestURLEntry,
+		ignoreFolders,
 		outputDirLabel,
 		outputDirButton,
+		progressBar,
 		downloadButton,
 		saveConfigButton,
 	)
@@ -132,6 +98,42 @@ func main() {
 	myWindow.SetContent(mainContainer)
 	myWindow.Resize(fyne.NewSize(400, 200))
 	myWindow.ShowAndRun()
+}
+
+func startSync(manifestUrl string, outputDir string, ignoreFolders []string, onFinish func()) error {
+	if manifestUrl == "" {
+		return errors.Errorf("Please enter a valid manifest URL")
+	}
+	if outputDir == "Output Directory: Not Selected" {
+		return errors.Errorf("Please choose an output directory")
+	}
+	files, err := operations.ReadManifestFiles(manifestUrl)
+	if err != nil {
+		return errors.Errorf("Error on dowload manifest files")
+	}
+	var wg sync.WaitGroup
+	totalFiles := len(files)
+	wg.Add(totalFiles)
+	go func() error {
+		for _, file := range files {
+			go func(file operations.File) error {
+				defer wg.Done()
+				err := operations.DownloadFile(file, outputDir)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(file)
+		}
+		wg.Wait()
+		err := operations.CleanupOutputDir(files, outputDir, ignoreFolders)
+		if err != nil {
+			return err
+		}
+		onFinish()
+		return nil
+	}()
+	return nil
 }
 
 func checkUpdate(window fyne.Window) {
@@ -144,7 +146,7 @@ func checkUpdate(window fyne.Window) {
 		Version:        VERSION,
 	}
 	latestVersion, _ := u.GetLatestVersion()
-	confirmDialog := dialog.NewConfirm(fmt.Sprintf("New release %s is available to update", latestVersion), "A update was found. You can update now.", func(response bool) {
+	confirmDialog := dialog.NewConfirm(fmt.Sprintf("New release %s is available to download", latestVersion), "A update was found. You can update now.", func(response bool) {
 		if response {
 			log.Println("start update")
 			u.Update()
