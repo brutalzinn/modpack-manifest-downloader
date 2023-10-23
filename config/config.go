@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"os"
 )
@@ -15,6 +16,13 @@ var configFilePath = "config.json"
 
 func LoadConfig() (*Config, error) {
 	var config = &Config{}
+	if _, err := os.Stat(configFilePath); errors.Is(err, os.ErrNotExist) {
+		cfg := &Config{
+			ManifestURL: "",
+			OutputDir:   "",
+		}
+		cfg.SaveConfig()
+	}
 	data, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
 		return nil, err

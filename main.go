@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	VERSION     = "v0.0.3"
+	VERSION     = "v0.0.4"
 	GITHUB_REPO = "github.com/brutalzinn/modpack-manifest-downloader"
 )
 
@@ -31,33 +31,9 @@ func main() {
 	backgroundImage := canvas.NewImageFromFile("assets/background.jpg") // Replace "background.jpg" with your image file path
 	backgroundImage.FillMode = canvas.ImageFillStretch
 	backgroundContainer := container.NewStack(backgroundImage)
-	cfg, _ := config.LoadConfig()
-	u := &updater.Updater{
-		Provider: &provider.Github{
-			RepositoryURL: GITHUB_REPO,
-			ArchiveName:   fmt.Sprintf("binaries_%s.zip", runtime.GOOS),
-		},
-		ExecutableName: fmt.Sprintf("modpack-manifest-downloader_%s_%s", runtime.GOOS, runtime.GOARCH),
-		Version:        VERSION,
-	}
-	latestVersion, _ := u.GetLatestVersion()
-	confirmDialog := dialog.NewConfirm(fmt.Sprintf("New release %s is available to update", latestVersion), "A update was found. You can update now.", func(response bool) {
-		if response {
-			log.Println("start update")
-			u.Update()
-			myWindow.Close()
-		} else {
-			log.Println("no update now")
-		}
-	}, myWindow)
-
-	if canUpdate, _ := u.CanUpdate(); canUpdate {
-		confirmDialog.Show()
-	}
-
+	//// INPUT FIELDS
 	manifestURLEntry := widget.NewEntry()
 	manifestURLEntry.SetPlaceHolder("Enter Manifest URL")
-	manifestURLEntry.SetText(cfg.ManifestURL)
 	outputDirLabel := widget.NewLabel("Output Directory: Not Selected")
 	outputDirButton := widget.NewButton("Choose the Minecraft Directory", func() {
 		dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
@@ -66,8 +42,6 @@ func main() {
 			}
 		}, myWindow)
 	})
-	outputDirLabel.SetText(cfg.OutputDir)
-
 	saveConfigButton := widget.NewButtonWithIcon("Save Config", theme.DocumentSaveIcon(), func() {
 		cfg := &config.Config{
 			ManifestURL: manifestURLEntry.Text,
@@ -140,6 +114,11 @@ func main() {
 			))
 		}()
 	})
+	///auto updater
+	checkUpdate(myWindow)
+	cfg, _ := config.LoadConfig()
+	manifestURLEntry.SetText(cfg.ManifestURL)
+	outputDirLabel.SetText(cfg.OutputDir)
 
 	content := container.NewVBox(
 		manifestURLEntry,
@@ -153,4 +132,27 @@ func main() {
 	myWindow.SetContent(mainContainer)
 	myWindow.Resize(fyne.NewSize(400, 200))
 	myWindow.ShowAndRun()
+}
+
+func checkUpdate(window fyne.Window) {
+	u := &updater.Updater{
+		Provider: &provider.Github{
+			RepositoryURL: GITHUB_REPO,
+			ArchiveName:   fmt.Sprintf("binaries_%s.zip", runtime.GOOS),
+		},
+		ExecutableName: fmt.Sprintf("modpack-manifest-downloader_%s_%s", runtime.GOOS, runtime.GOARCH),
+		Version:        VERSION,
+	}
+	latestVersion, _ := u.GetLatestVersion()
+	confirmDialog := dialog.NewConfirm(fmt.Sprintf("New release %s is available to update", latestVersion), "A update was found. You can update now.", func(response bool) {
+		if response {
+			log.Println("start update")
+			u.Update()
+		} else {
+			log.Println("no update now")
+		}
+	}, window)
+	if canUpdate, _ := u.CanUpdate(); canUpdate {
+		confirmDialog.Show()
+	}
 }
