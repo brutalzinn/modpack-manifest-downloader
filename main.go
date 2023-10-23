@@ -21,13 +21,13 @@ import (
 )
 
 const (
-	VERSION     = "1.0.0"
+	VERSION     = "0.0.2"
 	GITHUB_REPO = "https://github.com/brutalzinn/modpack-manifest-downloader"
 )
 
 func main() {
 	myApp := app.New()
-	myWindow := myApp.NewWindow("Minecraft ModPack Manifest Downloader")
+	myWindow := myApp.NewWindow("Minecraft ModPack Manifest Downloader V" + VERSION)
 	backgroundImage := canvas.NewImageFromFile("assets/background.jpg") // Replace "background.jpg" with your image file path
 	backgroundImage.FillMode = canvas.ImageFillStretch
 	backgroundContainer := container.NewStack(backgroundImage)
