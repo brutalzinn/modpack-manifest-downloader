@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	VERSION     = "0.0.0"
+	VERSION     = "1.0.0"
 	GITHUB_REPO = "https://github.com/brutalzinn/modpack-manifest-downloader"
 )
 
