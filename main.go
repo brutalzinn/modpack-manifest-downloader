@@ -21,18 +21,18 @@ import (
 )
 
 const (
-	VERSION     = "0.0.2"
-	GITHUB_REPO = "https://github.com/brutalzinn/modpack-manifest-downloader"
+	VERSION     = "v0.0.3"
+	GITHUB_REPO = "github.com/brutalzinn/modpack-manifest-downloader"
 )
 
 func main() {
 	myApp := app.New()
-	myWindow := myApp.NewWindow("Minecraft ModPack Manifest Downloader V" + VERSION)
+	myWindow := myApp.NewWindow(fmt.Sprintf("Minecraft ModPack Manifest Downloader %s", VERSION))
 	backgroundImage := canvas.NewImageFromFile("assets/background.jpg") // Replace "background.jpg" with your image file path
 	backgroundImage.FillMode = canvas.ImageFillStretch
 	backgroundContainer := container.NewStack(backgroundImage)
 	cfg, _ := config.LoadConfig()
-	updater := &updater.Updater{
+	u := &updater.Updater{
 		Provider: &provider.Github{
 			RepositoryURL: GITHUB_REPO,
 			ArchiveName:   fmt.Sprintf("binaries_%s.zip", runtime.GOOS),
@@ -40,9 +40,21 @@ func main() {
 		ExecutableName: fmt.Sprintf("modpack-manifest-downloader_%s_%s", runtime.GOOS, runtime.GOARCH),
 		Version:        VERSION,
 	}
-	if _, err := updater.Update(); err != nil {
-		log.Println(err)
+	latestVersion, _ := u.GetLatestVersion()
+	confirmDialog := dialog.NewConfirm(fmt.Sprintf("New release %s is available to update", latestVersion), "A update was found. You can update now.", func(response bool) {
+		if response {
+			log.Println("start update")
+			u.Update()
+			myWindow.Close()
+		} else {
+			log.Println("no update now")
+		}
+	}, myWindow)
+
+	if canUpdate, _ := u.CanUpdate(); canUpdate {
+		confirmDialog.Show()
 	}
+
 	manifestURLEntry := widget.NewEntry()
 	manifestURLEntry.SetPlaceHolder("Enter Manifest URL")
 	manifestURLEntry.SetText(cfg.ManifestURL)
