@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/brutalzinn/manifest-downloader/progress"
 	"github.com/pkg/errors"
 	"golang.org/x/exp/slices"
 )
@@ -61,7 +62,10 @@ func DownloadFile(file File, outputDir string) error {
 	}
 	return nil
 }
-func CleanupOutputDir(manifestFiles []File, outputDir string, ignoreFolders []string) error {
+func CleanupOutputDir(manifestFiles []File, outputDir string, ignoreFolders []string, onProgress func(progress *progress.Progress)) error {
+	progress := progress.New(len(manifestFiles))
+	progress.SetText("Checking files..")
+
 	manifestFileSet := make(map[string]string)
 	for _, file := range manifestFiles {
 		manifestFileSet[file.Path] = file.Hash
@@ -99,7 +103,9 @@ func CleanupOutputDir(manifestFiles []File, outputDir string, ignoreFolders []st
 					}
 				}
 			}
+			progress.Done()
 		}
+		onProgress(progress)
 		return nil
 	})
 	if err != nil {

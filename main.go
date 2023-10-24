@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/brutalzinn/manifest-downloader/config"
 	"github.com/brutalzinn/manifest-downloader/operations"
+	"github.com/brutalzinn/manifest-downloader/progress"
 	"github.com/mouuff/go-rocket-update/pkg/provider"
 	"github.com/mouuff/go-rocket-update/pkg/updater"
 	"github.com/pkg/errors"
@@ -33,11 +34,11 @@ func main() {
 	backgroundImage.FillMode = canvas.ImageFillStretch
 	backgroundContainer := container.NewStack(backgroundImage)
 	cfg, _ := config.LoadConfig()
-	progressBar := widget.NewProgressBarInfinite()
-	progressBar.Hide()
+	progressBar := widget.NewProgressBar()
 	//// INPUT FIELDS
 	ignoreFolders := widget.NewEntry()
 	ignoreFolders.SetPlaceHolder("Ignore directories that doesnt need be verified. Separe dirs using ','")
+	progressText := widget.NewLabel("...")
 	manifestURLEntry := widget.NewEntry()
 	manifestURLEntry.SetPlaceHolder("Enter Manifest URL")
 	outputDirLabel := widget.NewLabel("Output Directory: Not Selected")
@@ -67,9 +68,15 @@ func main() {
 		outputDir := outputDirLabel.Text
 		ignoreFolders := strings.Split(ignoreFolders.Text, ",")
 		progressBar.Show()
-		err := startSync(manifestURL, outputDir, ignoreFolders, func() {
-			progressBar.Hide()
-			dialog.ShowInformation("Success", "Files downloaded successfully!", myWindow)
+		err := startSync(manifestURL, outputDir, ignoreFolders, func(progress *progress.Progress) {
+			progressBar.Max = float64(progress.Max)
+			progressBar.Min = 0
+			progressBar.SetValue(float64(progress.Value))
+			progressText.SetText(progress.Text)
+			if progress.Completed {
+				progressBar.Hide()
+				dialog.ShowInformation("Success", "Files downloaded successfully!", myWindow)
+			}
 		})
 		if err != nil {
 			progressBar.Hide()
@@ -89,6 +96,7 @@ func main() {
 		ignoreFolders,
 		outputDirLabel,
 		outputDirButton,
+		progressText,
 		progressBar,
 		downloadButton,
 		saveConfigButton,
@@ -100,7 +108,7 @@ func main() {
 	myWindow.ShowAndRun()
 }
 
-func startSync(manifestUrl string, outputDir string, ignoreFolders []string, onFinish func()) error {
+func startSync(manifestUrl string, outputDir string, ignoreFolders []string, onProgress func(progress *progress.Progress)) error {
 	if manifestUrl == "" {
 		return errors.Errorf("Please enter a valid manifest URL")
 	}
@@ -114,6 +122,8 @@ func startSync(manifestUrl string, outputDir string, ignoreFolders []string, onF
 	var wg sync.WaitGroup
 	totalFiles := len(files)
 	wg.Add(totalFiles)
+	progressDownload := progress.New(totalFiles)
+	progressDownload.SetText("downloading files..")
 	go func() error {
 		for _, file := range files {
 			go func(file operations.File) error {
@@ -122,15 +132,21 @@ func startSync(manifestUrl string, outputDir string, ignoreFolders []string, onF
 				if err != nil {
 					return err
 				}
+				progressDownload.Done()
+				onProgress(progressDownload)
 				return nil
 			}(file)
 		}
 		wg.Wait()
-		err := operations.CleanupOutputDir(files, outputDir, ignoreFolders)
+		err := operations.CleanupOutputDir(files, outputDir, ignoreFolders,
+			func(progress *progress.Progress) {
+				onProgress(progress)
+			})
 		if err != nil {
 			return err
 		}
-		onFinish()
+		progressDownload.Complete()
+		onProgress(progressDownload)
 		return nil
 	}()
 	return nil
